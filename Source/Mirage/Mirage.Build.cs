@@ -8,7 +8,7 @@ public class Mirage : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-        PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "Slate", "SlateCore", "UMG" });
+        PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "Slate", "SlateCore", "UMG",  "HeadMountedDisplay", "EnhancedInput" });
 
         PrivateDependencyModuleNames.AddRange(new string[] {  });
 
