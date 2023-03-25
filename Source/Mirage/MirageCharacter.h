@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "MirageCharacterMovementComponent.h"
 #include "InputActionValue.h"
 #include "MirageCharacter.generated.h"
 
@@ -39,9 +40,11 @@ class AMirageCharacter : public ACharacter
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
 	class UInputAction* MoveAction;
 
-	
 public:
-	AMirageCharacter();
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = Movement)
+	UMirageCharacterMovementComponent* MirageCharacterMovementComponent;
+public:
+	AMirageCharacter(const FObjectInitializer& ObjectInitializer);
 
 protected:
 	virtual void BeginPlay();
@@ -81,6 +84,7 @@ public:
 	USkeletalMeshComponent* GetMesh1P() const { return Mesh1P; }
 	/** Returns FirstPersonCameraComponent subobject **/
 	UCameraComponent* GetFirstPersonCameraComponent() const { return FirstPersonCameraComponent; }
+
 
 
 };
