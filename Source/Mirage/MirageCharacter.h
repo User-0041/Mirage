@@ -3,10 +3,12 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Character.h"
 #include "MirageCharacterMovementComponent.h"
+
+#include "GameFramework/Character.h"
 #include "InputActionValue.h"
 #include "MirageCharacter.generated.h"
+
 
 class UInputComponent;
 class USkeletalMeshComponent;
@@ -14,7 +16,7 @@ class USceneComponent;
 class UCameraComponent;
 class UAnimMontage;
 class USoundBase;
-
+class UMirageCharacterMovementComponent;
 UCLASS(config=Game)
 class AMirageCharacter : public ACharacter
 {
@@ -39,10 +41,11 @@ class AMirageCharacter : public ACharacter
 	/** Move Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
 	class UInputAction* MoveAction;
-
+	
 public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = Movement)
 	UMirageCharacterMovementComponent* MirageCharacterMovementComponent;
+	
 public:
 	AMirageCharacter(const FObjectInitializer& ObjectInitializer);
 
@@ -50,7 +53,9 @@ protected:
 	virtual void BeginPlay();
 
 public:
-		
+
+	FCollisionQueryParams GetIgnoreCharacterParams();
+	
 	/** Look Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	class UInputAction* LookAction;
@@ -84,7 +89,8 @@ public:
 	USkeletalMeshComponent* GetMesh1P() const { return Mesh1P; }
 	/** Returns FirstPersonCameraComponent subobject **/
 	UCameraComponent* GetFirstPersonCameraComponent() const { return FirstPersonCameraComponent; }
-
+	/**  Retuns The CharacterMovmentaComponent subobject **/
+	UMirageCharacterMovementComponent* CharacterMirageMovementComponentGet() const  { return MirageCharacterMovementComponent;};
 
 
 };

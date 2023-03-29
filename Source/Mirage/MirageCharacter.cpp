@@ -1,10 +1,8 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
+
 #include "MirageCharacter.h"
 #include "MirageProjectile.h"
-
-#include "GameFramework/CharacterMovementComponent.h"
-
 #include "Animation/AnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -15,17 +13,23 @@
 //////////////////////////////////////////////////////////////////////////
 // AMirageCharacter
 
-AMirageCharacter::AMirageCharacter(const FObjectInitializer& ObjectInitializer)
-	:Super(ObjectInitializer.SetDefaultSubobjectClass<UMirageCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
-{
+AMirageCharacter::AMirageCharacter(
+	const FObjectInitializer& ObjectInitializer
+)
+	:Super(
+		ObjectInitializer.SetDefaultSubobjectClass<UMirageCharacterMovementComponent>(ACharacter::CharacterMovementComponentName)
+	)
+{	
+	
 	MirageCharacterMovementComponent = Cast<UMirageCharacterMovementComponent>(GetCharacterMovement());
 	MirageCharacterMovementComponent->SetIsReplicated(true);
+	
 	// Character doesnt have a rifle at start
 	bHasRifle = false;
 	
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(55.f, 96.0f);
-		
+
 	// Create a CameraComponent	
 	FirstPersonCameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("FirstPersonCamera"));
 	FirstPersonCameraComponent->SetupAttachment(GetCapsuleComponent());
@@ -57,6 +61,16 @@ void AMirageCharacter::BeginPlay()
 		}
 	}
 
+}
+
+FCollisionQueryParams AMirageCharacter::GetIgnoreCharacterParams()
+{
+	FCollisionQueryParams Params;
+	TArray<AActor*> CharacterChildren;
+	GetAllChildActors(CharacterChildren);
+	Params.AddIgnoredActors(CharacterChildren);
+	Params.AddIgnoredActor(this);
+	return  Params;
 }
 
 //////////////////////////////////////////////////////////////////////////// Input
