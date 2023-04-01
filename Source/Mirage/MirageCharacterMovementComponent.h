@@ -29,12 +29,12 @@ class MIRAGE_API UMirageCharacterMovementComponent : public UCharacterMovementCo
 	{
 		//Flags
 		uint8 Saved_bWantsToSprint : 1;
-
+		//OutherVaribals
 		uint8 Saved_bPrevWantsToCrouch : 1;
-
+		uint8 Saved_bWantsToProne:1;
 		
-		virtual bool
-		CanCombineWith(const FSavedMovePtr& NewMove, ACharacter* InCharacter, float MaxDelta) const override;
+		
+		virtual bool CanCombineWith(const FSavedMovePtr& NewMove, ACharacter* InCharacter, float MaxDelta) const override;
 		virtual void Clear() override;
 		virtual uint8 GetCompressedFlags() const override;
 		virtual void SetMoveFor(ACharacter* C, float InDeltaTime, FVector const& NewAccel,FNetworkPredictionData_Client_Character& ClientData) override;
@@ -49,7 +49,6 @@ class MIRAGE_API UMirageCharacterMovementComponent : public UCharacterMovementCo
 		virtual FSavedMovePtr AllocateNewMove() override;
 	};
 
-	UPROPERTY(Transient) AMirageCharacter* MirageCharacterOwner;
 // Proporties
 public:
 	//Sprint
@@ -66,12 +65,16 @@ public:
 	float Slide_GravityForce= 5000;
 	UPROPERTY(EditDefaultsOnly)
 	float Slide_Friction= 0.0f;
+	UPROPERTY(EditDefaultsOnly)
+	float Slide_MaxSpeed= 0.0f;
+	UPROPERTY(EditDefaultsOnly)
+	float BreakingDecelerationSliding= 0.f;
 	//Prone
 
 	UPROPERTY(EditDefaultsOnly)
-	float Prone_EnterHoldDuration=0.2f;
+	float Prone_EnterHoldDuration=1.f;
 	UPROPERTY(EditDefaultsOnly)
-	float Prone_MaxSpeed=300.f;
+	float Prone_MaxSpeed=5.f;
 	UPROPERTY(EditDefaultsOnly)
 	float BreakingDecelerationProning= 2500.f;
 protected:
@@ -79,14 +82,20 @@ protected:
 	virtual void OnMovementUpdated(float DeltaSeconds, const FVector& OldLocation, const FVector& OldVelocity) override;
 	virtual void UpdateCharacterStateBeforeMovement(float DeltaSeconds) override;
 	virtual void PhysCustom(float deltaTime, int32 Iterations) override;
-	
-  
+	virtual void OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode) override;
+
 
 public:
 	virtual bool IsMovingOnGround() const override;
 	virtual bool CanCrouchInCurrentState() const override;
+	virtual float GetMaxSpeed() const override;
+	virtual float GetMaxBrakingDeceleration() const override;
+	
 	bool Safe_bWantsToSprint;
 	bool Safe_bPrevWantsToCrouch;
+	bool Safe_bWantsToProne;
+	UPROPERTY(Transient) AMirageCharacter* MirageCharacterOwner;
+	FTimerHandle TimerHandle_EnterProne;
 
 public:
 	UMirageCharacterMovementComponent();
@@ -104,8 +113,13 @@ private:
 	void EnterProne();
 	void ExistProne();
 	void PhysProne(float deltaTime, int32 Iterations);
-	bool CanProne() const ; 
-
+	bool CanProne() const ;
+	void TryEnterProne()
+	{
+		UE_LOG(LogTemp,Warning,TEXT("Are you Dumm???"));
+		Safe_bWantsToProne= true;
+	};
+	UFUNCTION(Server,Reliable) void Server_EnterProne();
 public:
 	UFUNCTION(BlueprintCallable)
 	void SprintPressed();
@@ -113,6 +127,8 @@ public:
 	void SprintReleased();
 	UFUNCTION(BlueprintCallable)
 	void CrouchPressed();
+	UFUNCTION(BlueprintCallable)
+    void CrouchReleased();
 	UFUNCTION(BlueprintCallable)
 	bool IsCustomMovementMode(ECustomMovementMode InCustomMovementMovementMode) const;
 	UFUNCTION(BlueprintPure)

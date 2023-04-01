@@ -43,6 +43,7 @@ void UMirageCharacterMovementComponent::FSavedMove_Mirage::SetMoveFor(ACharacter
 	UMirageCharacterMovementComponent* CharacterMovement = Cast<UMirageCharacterMovementComponent>(C->GetCharacterMovement());
 	Saved_bWantsToSprint = CharacterMovement->Safe_bWantsToSprint;
 	Saved_bPrevWantsToCrouch = CharacterMovement->Safe_bPrevWantsToCrouch;
+	Saved_bWantsToProne = CharacterMovement->Safe_bWantsToProne;
 }
 
 void UMirageCharacterMovementComponent::FSavedMove_Mirage::PrepMoveFor(ACharacter* C)
@@ -51,6 +52,7 @@ void UMirageCharacterMovementComponent::FSavedMove_Mirage::PrepMoveFor(ACharacte
 	UMirageCharacterMovementComponent* CharacterMovement = Cast<UMirageCharacterMovementComponent>(C->GetCharacterMovement());
 	CharacterMovement->Safe_bWantsToSprint = Saved_bWantsToSprint;
 	CharacterMovement->Safe_bPrevWantsToCrouch= Saved_bPrevWantsToCrouch;
+	CharacterMovement->Safe_bWantsToProne= Saved_bWantsToProne;
 }
 
 UMirageCharacterMovementComponent::FNetworkPredictionData_Client_Mirage::FNetworkPredictionData_Client_Mirage(const UCharacterMovementComponent& ClientMovement) : FNetworkPredictionData_Client_Character(ClientMovement)
@@ -98,6 +100,20 @@ void UMirageCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float
 	{
 		ExistSlide();
 	}
+
+	if(Safe_bWantsToProne)
+	{
+		if(CanProne())
+		{
+			SetMovementMode(MOVE_Custom,CMOVE_Prone);
+			if(!CharacterOwner->HasAuthority()) Server_EnterProne();
+		}
+		Safe_bWantsToProne= false;
+	}
+	if(IsCustomMovementMode(CMOVE_Prone)&&!bWantsToCrouch)
+	{
+		SetMovementMode(MOVE_Walking);
+	}
 	Super::UpdateCharacterStateBeforeMovement(DeltaSeconds);
 }
 
@@ -117,6 +133,17 @@ void UMirageCharacterMovementComponent::PhysCustom(float deltaTime, int32 Iterat
 	}
 }
 
+void UMirageCharacterMovementComponent::OnMovementModeChanged(EMovementMode PreviousMovementMode,
+	uint8 PreviousCustomMode)
+{
+	Super::OnMovementModeChanged(PreviousMovementMode, PreviousCustomMode);
+	if(PreviousMovementMode == MOVE_Custom && PreviousCustomMode==CMOVE_Slide){ExistSlide();}
+	if(PreviousMovementMode == MOVE_Custom && PreviousCustomMode==CMOVE_Prone){ExistProne();}
+		
+	if (IsCustomMovementMode(CMOVE_Slide)) EnterSlide();
+	if (IsCustomMovementMode(CMOVE_Prone)) EnterProne();
+
+}
 
 
 bool UMirageCharacterMovementComponent::IsMovingOnGround() const
@@ -127,6 +154,37 @@ bool UMirageCharacterMovementComponent::IsMovingOnGround() const
 bool UMirageCharacterMovementComponent::CanCrouchInCurrentState() const
 {
 	return Super::CanCrouchInCurrentState() && IsMovingOnGround();
+}
+
+float  UMirageCharacterMovementComponent::GetMaxSpeed() const
+{
+	if(MovementMode!=MOVE_Custom){return Super::GetMaxSpeed();}
+	switch (CustomMovementMode)
+	{
+	case CMOVE_Slide:
+		return  Slide_MaxSpeed;
+	case CMOVE_Prone:
+		return  Prone_MaxSpeed;
+	default:
+		UE_LOG(LogTemp,Fatal,TEXT("I THINK YOU ARE ACTULLY DUMM"));
+		return  -1.f;
+	}
+}
+
+float UMirageCharacterMovementComponent::GetMaxBrakingDeceleration() const
+{
+	if(MovementMode!= MOVE_Custom){return Super::GetMaxBrakingDeceleration();}
+
+	switch (CustomMovementMode)
+	{
+	case CMOVE_Slide:
+		return BreakingDecelerationSliding;
+	case CMOVE_Prone:
+		return BreakingDecelerationProning;
+	default:
+		UE_LOG(LogTemp,Fatal,TEXT("NAH MAN YOU ARE RELLLLLLLY DUMM LIKE  YOU ARE ACTULLY DUMM"));
+		return  -1.f;
+	}
 }
 
 FNetworkPredictionData_Client* UMirageCharacterMovementComponent::GetPredictionData_Client() const
@@ -576,6 +634,10 @@ void UMirageCharacterMovementComponent::PhysProne(float deltaTime, int32 Iterati
 	}
 
 
+void UMirageCharacterMovementComponent::Server_EnterProne_Implementation()
+{
+	Safe_bWantsToProne= true;
+}
 
 void UMirageCharacterMovementComponent::SprintPressed()
 {
@@ -591,7 +653,13 @@ void UMirageCharacterMovementComponent::SprintPressed()
 void UMirageCharacterMovementComponent::CrouchPressed()
  {
 	 bWantsToCrouch = !bWantsToCrouch;
+	GetWorld()->GetTimerManager().SetTimer(TimerHandle_EnterProne,this,&UMirageCharacterMovementComponent::TryEnterProne,Prone_EnterHoldDuration);
  }
+
+void UMirageCharacterMovementComponent::CrouchReleased()
+{
+	GetWorld()->GetTimerManager().ClearTimer(TimerHandle_EnterProne);
+}
 
 bool UMirageCharacterMovementComponent::IsCustomMovementMode(ECustomMovementMode InCustomMovementMovementMode) const
 {
@@ -602,4 +670,3 @@ bool UMirageCharacterMovementComponent::IsMovementMode(EMovementMode InMovementM
 {
 	return  InMovementMode==MovementMode;
 }
-
