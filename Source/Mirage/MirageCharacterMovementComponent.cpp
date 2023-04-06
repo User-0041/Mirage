@@ -44,6 +44,7 @@ void UMirageCharacterMovementComponent::FSavedMove_Mirage::SetMoveFor(ACharacter
 	Saved_bWantsToSprint = CharacterMovement->Safe_bWantsToSprint;
 	Saved_bPrevWantsToCrouch = CharacterMovement->Safe_bPrevWantsToCrouch;
 	Saved_bWantsToProne = CharacterMovement->Safe_bWantsToProne;
+	Saved_bWantsToClimb  = CharacterMovement->Safe_bWantsToClimb;
 }
 
 void UMirageCharacterMovementComponent::FSavedMove_Mirage::PrepMoveFor(ACharacter* C)
@@ -53,6 +54,7 @@ void UMirageCharacterMovementComponent::FSavedMove_Mirage::PrepMoveFor(ACharacte
 	CharacterMovement->Safe_bWantsToSprint = Saved_bWantsToSprint;
 	CharacterMovement->Safe_bPrevWantsToCrouch= Saved_bPrevWantsToCrouch;
 	CharacterMovement->Safe_bWantsToProne= Saved_bWantsToProne;
+	CharacterMovement->Safe_bWantsToClimb= Saved_bWantsToClimb;
 }
 
 UMirageCharacterMovementComponent::FNetworkPredictionData_Client_Mirage::FNetworkPredictionData_Client_Mirage(const UCharacterMovementComponent& ClientMovement) : FNetworkPredictionData_Client_Character(ClientMovement)
@@ -73,32 +75,28 @@ void UMirageCharacterMovementComponent::UpdateFromCompressedFlags(uint8 Flags)
 void UMirageCharacterMovementComponent::OnMovementUpdated(float DeltaSeconds, const FVector& OldLocation, const FVector& OldVelocity)
 {
 	Super::OnMovementUpdated(DeltaSeconds, OldLocation, OldVelocity);
-	if (MovementMode == MOVE_Walking) {
-		if (Safe_bWantsToSprint) {
-			MaxWalkSpeed = MaxSprintSpeed;
-		}
-		else if (!Safe_bWantsToSprint) {
-			MaxWalkSpeed = WalkSprintSpeed;
-		}
-	}
+
 	Safe_bPrevWantsToCrouch= bWantsToCrouch;
 }
 
 void UMirageCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
 {
+
 	if(MovementMode==MOVE_Walking && !bWantsToCrouch && Safe_bPrevWantsToCrouch)
 	{
-		
-		FHitResult PotentialSlideSurface;
-		if(Velocity.SizeSquared() > pow(Slide_MinSpeed,2)&&GetSlideSurface(PotentialSlideSurface) )
+		if(CanSlide())
 		{
-			EnterSlide();
+			SetMovementMode(MOVE_Custom, CMOVE_Slide);
+			
+		}else if (IsCustomMovementMode(CMOVE_Slide) && !bWantsToCrouch)
+		{
+			SetMovementMode(MOVE_Walking);
 		}
 	}
 
 	if(IsCustomMovementMode(CMOVE_Slide)&& !bWantsToCrouch)
 	{
-		ExistSlide();
+		ExitSlide();
 	}
 
 	if(Safe_bWantsToProne)
@@ -110,6 +108,22 @@ void UMirageCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float
 		}
 		Safe_bWantsToProne= false;
 	}
+
+	
+	if(Safe_bWantsToClimb)
+	{
+	
+		if(TryClimb())
+		{
+			
+			SetMovementMode(MOVE_Custom,CMOVE_Climb);
+			if(!CharacterOwner->HasAuthority()) Server_EnterTryClimb();
+		}
+		Safe_bWantsToClimb= false;
+	}
+	
+
+	
 	if(IsCustomMovementMode(CMOVE_Prone)&&!bWantsToCrouch)
 	{
 		SetMovementMode(MOVE_Walking);
@@ -117,9 +131,25 @@ void UMirageCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float
 	Super::UpdateCharacterStateBeforeMovement(DeltaSeconds);
 }
 
+	void UMirageCharacterMovementComponent::OnMovementModeChanged(EMovementMode PreviousMovementMode,
+	uint8 PreviousCustomMode)
+
+{
+	
+	Super::OnMovementModeChanged(PreviousMovementMode, PreviousCustomMode);
+	
+	if(PreviousMovementMode == MOVE_Custom && PreviousCustomMode==CMOVE_Slide){ExitSlide();}
+	if(PreviousMovementMode == MOVE_Custom && PreviousCustomMode==CMOVE_Prone){ExistProne();}
+	if (IsCustomMovementMode(CMOVE_Slide)){EnterSlide();};
+	if (IsCustomMovementMode(CMOVE_Prone)){EnterProne();};
+
+}
+
+	
 void UMirageCharacterMovementComponent::PhysCustom(float deltaTime, int32 Iterations)
 {
 	Super::PhysCustom(deltaTime, Iterations);
+
 	switch (CustomMovementMode)
 	{
 	case CMOVE_Slide:
@@ -128,22 +158,14 @@ void UMirageCharacterMovementComponent::PhysCustom(float deltaTime, int32 Iterat
 	case CMOVE_Prone:
 		PhysProne(deltaTime,Iterations);
 		break;
+	case CMOVE_Climb:
+		PhysClimb(deltaTime,Iterations);
+		break;
 	default:
-		UE_LOG(LogTemp,Fatal,TEXT("Are you Dumm???"))		
+		UE_LOG(LogTemp,Fatal,TEXT("Movment Mode Not Added To PhysCustom Function Case"))		
 	}
 }
 
-void UMirageCharacterMovementComponent::OnMovementModeChanged(EMovementMode PreviousMovementMode,
-	uint8 PreviousCustomMode)
-{
-	Super::OnMovementModeChanged(PreviousMovementMode, PreviousCustomMode);
-	if(PreviousMovementMode == MOVE_Custom && PreviousCustomMode==CMOVE_Slide){ExistSlide();}
-	if(PreviousMovementMode == MOVE_Custom && PreviousCustomMode==CMOVE_Prone){ExistProne();}
-		
-	if (IsCustomMovementMode(CMOVE_Slide)) EnterSlide();
-	if (IsCustomMovementMode(CMOVE_Prone)) EnterProne();
-
-}
 
 
 bool UMirageCharacterMovementComponent::IsMovingOnGround() const
@@ -158,6 +180,7 @@ bool UMirageCharacterMovementComponent::CanCrouchInCurrentState() const
 
 float  UMirageCharacterMovementComponent::GetMaxSpeed() const
 {
+	if(MovementMode==MOVE_Walking && Safe_bWantsToSprint && !IsCrouching()){return MaxSprintSpeed;}
 	if(MovementMode!=MOVE_Custom){return Super::GetMaxSpeed();}
 	switch (CustomMovementMode)
 	{
@@ -165,11 +188,14 @@ float  UMirageCharacterMovementComponent::GetMaxSpeed() const
 		return  Slide_MaxSpeed;
 	case CMOVE_Prone:
 		return  Prone_MaxSpeed;
+	case CMOVE_Climb:
+		return  Climb_MaxSpeed;
 	default:
-		UE_LOG(LogTemp,Fatal,TEXT("I THINK YOU ARE ACTULLY DUMM"));
+		UE_LOG(LogTemp,Fatal,TEXT("Movment Mode Max Speed Not added to getter"));
 		return  -1.f;
 	}
 }
+
 
 float UMirageCharacterMovementComponent::GetMaxBrakingDeceleration() const
 {
@@ -181,8 +207,10 @@ float UMirageCharacterMovementComponent::GetMaxBrakingDeceleration() const
 		return BreakingDecelerationSliding;
 	case CMOVE_Prone:
 		return BreakingDecelerationProning;
+	case CMOVE_Climb:
+		return  BreakingDecelerationClimbing;
 	default:
-		UE_LOG(LogTemp,Fatal,TEXT("NAH MAN YOU ARE RELLLLLLLY DUMM LIKE  YOU ARE ACTULLY DUMM"));
+		UE_LOG(LogTemp,Fatal,TEXT("Movment Mode Breaking Deceltion Not added tog getter "));
 		return  -1.f;
 	}
 }
@@ -210,13 +238,14 @@ void UMirageCharacterMovementComponent::InitializeComponent()
 
 void UMirageCharacterMovementComponent::EnterSlide()
 {
-	UE_LOG(LogTemp, Log, TEXT("Slide Enterd"));
+
 	bWantsToCrouch = true;
-	Velocity += Velocity.GetSafeNormal2D()*Slide_EnterImpulse;
-	SetMovementMode(MOVE_Custom,CMOVE_Slide);
+	bOrientRotationToMovement = false;
+	Velocity += Velocity.GetSafeNormal2D() * Slide_EnterImpulse;
+	FindFloor(UpdatedComponent->GetComponentLocation(), CurrentFloor, true, NULL);
 }
 
-void UMirageCharacterMovementComponent::ExistSlide()
+void UMirageCharacterMovementComponent::ExitSlide()
 {
 
 	bWantsToCrouch = false;
@@ -639,6 +668,79 @@ void UMirageCharacterMovementComponent::Server_EnterProne_Implementation()
 	Safe_bWantsToProne= true;
 }
 
+bool UMirageCharacterMovementComponent::TryClimb()
+{
+
+	FHitResult SurfaceHit;
+	FVector CapsuleLocation = UpdatedComponent->GetComponentLocation();
+	GetWorld()->LineTraceSingleByProfile(SurfaceHit,CapsuleLocation, CapsuleLocation + UpdatedComponent->GetForwardVector() * ClimbReachingDistance,"BlockAll",MirageCharacterOwner->GetIgnoreCharacterParams());
+	if (!SurfaceHit.IsValidBlockingHit()) return false;
+	FQuat NewRotation = FRotationMatrix::MakeFromXZ(-SurfaceHit.Normal, FVector::UpVector).ToQuat();
+	SafeMoveUpdatedComponent(FVector::ZeroVector, NewRotation, false, SurfaceHit);
+	SetMovementMode(MOVE_Custom, CMOVE_Climb);
+	bOrientRotationToMovement = false;
+	
+	return true;
+}
+
+void UMirageCharacterMovementComponent::PhysClimb(float deltaTime, int32 Iterations)
+{
+	
+		if (deltaTime < MIN_TICK_TIME)
+		{
+			return;
+		}
+		if (!CharacterOwner || (!CharacterOwner->Controller && !bRunPhysicsWithNoController && !HasAnimRootMotion() && !CurrentRootMotion.HasOverrideVelocity() && (CharacterOwner->GetLocalRole() != ROLE_SimulatedProxy)))
+		{
+			Acceleration = FVector::ZeroVector;
+			Velocity = FVector::ZeroVector;
+			return;
+		}
+	
+		// Perform the move
+		bJustTeleported = false;
+		Iterations++;
+		const FVector OldLocation = UpdatedComponent->GetComponentLocation();
+		FHitResult SurfHit, FloorHit;
+		GetWorld()->LineTraceSingleByProfile(SurfHit, OldLocation, OldLocation + UpdatedComponent->GetForwardVector() * ClimbReachingDistance, "BlockAll", MirageCharacterOwner->GetIgnoreCharacterParams());
+		GetWorld()->LineTraceSingleByProfile(FloorHit, OldLocation, OldLocation + FVector::DownVector * CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * 1.2f, "BlockAll", MirageCharacterOwner->GetIgnoreCharacterParams());
+		if (!SurfHit.IsValidBlockingHit() || FloorHit.IsValidBlockingHit())
+		{
+			SetMovementMode(MOVE_Falling);
+			StartNewPhysics(deltaTime, Iterations);
+			return;
+		}
+
+		// Transform Acceleration
+		Acceleration.Z = 0.f;
+		Acceleration = Acceleration.RotateAngleAxis(90.f, -UpdatedComponent->GetRightVector());
+
+		// Apply acceleration
+		CalcVelocity(deltaTime, 0.f, false, GetMaxBrakingDeceleration());
+		Velocity = FVector::VectorPlaneProject(Velocity, SurfHit.Normal);
+
+		// Compute move parameters
+		const FVector Delta = deltaTime * Velocity; // dx = v * dt
+		if (!Delta.IsNearlyZero())
+		{
+			FHitResult Hit;
+			SafeMoveUpdatedComponent(Delta, UpdatedComponent->GetComponentQuat(), true, Hit);
+			FVector WallAttractionDelta = -SurfHit.Normal * WallAttractionForce * deltaTime;
+			SafeMoveUpdatedComponent(WallAttractionDelta, UpdatedComponent->GetComponentQuat(), true, Hit);
+		}
+
+		Velocity = (UpdatedComponent->GetComponentLocation() - OldLocation) / deltaTime; // v = dx / dt
+	
+
+
+}
+
+void UMirageCharacterMovementComponent::Server_EnterTryClimb_Implementation()
+{
+	Safe_bWantsToClimb= true;
+}
+
+
 void UMirageCharacterMovementComponent::SprintPressed()
 {
 	Safe_bWantsToSprint = true;
@@ -669,4 +771,15 @@ bool UMirageCharacterMovementComponent::IsCustomMovementMode(ECustomMovementMode
 bool UMirageCharacterMovementComponent::IsMovementMode(EMovementMode InMovementMode) const
 {
 	return  InMovementMode==MovementMode;
+}
+
+void UMirageCharacterMovementComponent::ClimbPressed()
+{
+	Safe_bWantsToClimb = true;
+}
+
+void UMirageCharacterMovementComponent::ClimbReleased()
+{
+	Safe_bWantsToClimb = false;
+
 }
