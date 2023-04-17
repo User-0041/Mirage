@@ -21,6 +21,10 @@ bool UMirageCharacterMovementComponent::FSavedMove_Mirage::CanCombineWith(const 
 	if (Saved_bWantsToSprint!=NewMirageMove->Saved_bWantsToSprint) {
 		return false;
 	}
+
+	if (Saved_bWallRunIsRight!=NewMirageMove->Saved_bWallRunIsRight) {
+		return false;
+	}
 	return FSavedMove_Character::CanCombineWith(NewMove,InCharacter,MaxDelta);
 }
 
@@ -28,6 +32,10 @@ void UMirageCharacterMovementComponent::FSavedMove_Mirage::Clear()
 {
 	FSavedMove_Character::Clear();
 	Saved_bWantsToSprint = 0;
+	Saved_bWantsToProne=0;
+	Saved_bWantsToClimb=0;
+	Saved_bWallRunIsRight=0;
+	Saved_bPrevWantsToCrouch=0;
 }
 
 uint8 UMirageCharacterMovementComponent::FSavedMove_Mirage::GetCompressedFlags() const
@@ -45,6 +53,7 @@ void UMirageCharacterMovementComponent::FSavedMove_Mirage::SetMoveFor(ACharacter
 	Saved_bPrevWantsToCrouch = CharacterMovement->Safe_bPrevWantsToCrouch;
 	Saved_bWantsToProne = CharacterMovement->Safe_bWantsToProne;
 	Saved_bWantsToClimb  = CharacterMovement->Safe_bWantsToClimb;
+	Saved_bWallRunIsRight = CharacterMovement->Safe_bWallRunIsRight;
 }
 
 void UMirageCharacterMovementComponent::FSavedMove_Mirage::PrepMoveFor(ACharacter* C)
@@ -55,6 +64,8 @@ void UMirageCharacterMovementComponent::FSavedMove_Mirage::PrepMoveFor(ACharacte
 	CharacterMovement->Safe_bPrevWantsToCrouch= Saved_bPrevWantsToCrouch;
 	CharacterMovement->Safe_bWantsToProne= Saved_bWantsToProne;
 	CharacterMovement->Safe_bWantsToClimb= Saved_bWantsToClimb;
+	CharacterMovement->Safe_bWallRunIsRight = Saved_bWallRunIsRight;
+
 }
 
 UMirageCharacterMovementComponent::FNetworkPredictionData_Client_Mirage::FNetworkPredictionData_Client_Mirage(const UCharacterMovementComponent& ClientMovement) : FNetworkPredictionData_Client_Character(ClientMovement)
@@ -115,7 +126,6 @@ void UMirageCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float
 	
 		if(TryClimb())
 		{
-			
 			SetMovementMode(MOVE_Custom,CMOVE_Climb);
 			if(!CharacterOwner->HasAuthority()) Server_EnterTryClimb();
 		}
@@ -128,12 +138,16 @@ void UMirageCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float
 	{
 		SetMovementMode(MOVE_Walking);
 	}
+
+	if(IsFalling())
+	{
+		TryWallRun();
+	}
+	
 	Super::UpdateCharacterStateBeforeMovement(DeltaSeconds);
 }
 
-	void UMirageCharacterMovementComponent::OnMovementModeChanged(EMovementMode PreviousMovementMode,
-	uint8 PreviousCustomMode)
-
+	void UMirageCharacterMovementComponent::OnMovementModeChanged(EMovementMode PreviousMovementMode,uint8 PreviousCustomMode)
 {
 	
 	Super::OnMovementModeChanged(PreviousMovementMode, PreviousCustomMode);
@@ -142,6 +156,15 @@ void UMirageCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float
 	if(PreviousMovementMode == MOVE_Custom && PreviousCustomMode==CMOVE_Prone){ExistProne();}
 	if (IsCustomMovementMode(CMOVE_Slide)){EnterSlide();};
 	if (IsCustomMovementMode(CMOVE_Prone)){EnterProne();};
+
+	if(IsWallRunning()&&GetOwnerRole()==ROLE_SimulatedProxy)
+	{
+		FVector Start = UpdatedComponent->GetComponentLocation();
+		FVector End = Start + UpdatedComponent->GetRightVector() * CapsuleRadius() * 2;
+		FCollisionQueryParams Params = MirageCharacterOwner->GetIgnoreCharacterParams();
+		FHitResult WallHit;
+		Safe_bWallRunIsRight = GetWorld()->LineTraceSingleByProfile(WallHit,Start,End,"BlockAll",Params);
+	}
 
 }
 
@@ -160,6 +183,9 @@ void UMirageCharacterMovementComponent::PhysCustom(float deltaTime, int32 Iterat
 		break;
 	case CMOVE_Climb:
 		PhysClimb(deltaTime,Iterations);
+		break;
+	case CMOVE_WallRun:
+		PhysWallRun(deltaTime,Iterations);
 		break;
 	default:
 		UE_LOG(LogTemp,Fatal,TEXT("Movment Mode Not Added To PhysCustom Function Case"))		
@@ -190,6 +216,8 @@ float  UMirageCharacterMovementComponent::GetMaxSpeed() const
 		return  Prone_MaxSpeed;
 	case CMOVE_Climb:
 		return  Climb_MaxSpeed;
+	case CMOVE_WallRun:
+		return  WallRun_MaxSpeed;
 	default:
 		UE_LOG(LogTemp,Fatal,TEXT("Movment Mode Max Speed Not added to getter"));
 		return  -1.f;
@@ -209,6 +237,8 @@ float UMirageCharacterMovementComponent::GetMaxBrakingDeceleration() const
 		return BreakingDecelerationProning;
 	case CMOVE_Climb:
 		return  BreakingDecelerationClimbing;
+	case CMOVE_WallRun:
+		return  0.f;
 	default:
 		UE_LOG(LogTemp,Fatal,TEXT("Movment Mode Breaking Deceltion Not added tog getter "));
 		return  -1.f;
@@ -234,6 +264,33 @@ void UMirageCharacterMovementComponent::InitializeComponent()
 {
 	Super::InitializeComponent();
 	MirageCharacterOwner = Cast<AMirageCharacter>(GetOwner());
+}
+
+bool UMirageCharacterMovementComponent::CanAttemptJump() const
+{
+	return Super::CanAttemptJump()||IsWallRunning();
+}
+
+bool UMirageCharacterMovementComponent::DoJump(bool bReplayingMoves)
+{
+	UE_LOG(LogTemp,Log,TEXT("Jummmpppp "))		
+	bool bWasWallRunning = IsWallRunning();
+	if(Super::DoJump(bReplayingMoves))
+	{
+		
+		if(bWasWallRunning)
+		{
+			FVector Start = UpdatedComponent->GetComponentLocation();
+			FVector CastDelta = UpdatedComponent->GetRightVector()*CapsuleRadius()*2;
+			FVector End = Safe_bWallRunIsRight ? Start + CastDelta : Start - CastDelta;
+			FCollisionQueryParams Params = MirageCharacterOwner->GetIgnoreCharacterParams();
+			FHitResult WallHit;
+			GetWorld()->LineTraceSingleByProfile(WallHit,Start,End,"BlockAll",Params);
+			Velocity+=WallHit.Normal*WallRun_JumpForce;
+		}
+		return  true;
+	}
+	return false;
 }
 
 void UMirageCharacterMovementComponent::EnterSlide()
@@ -675,6 +732,7 @@ bool UMirageCharacterMovementComponent::TryClimb()
 	FVector CapsuleLocation = UpdatedComponent->GetComponentLocation();
 	GetWorld()->LineTraceSingleByProfile(SurfaceHit,CapsuleLocation, CapsuleLocation + UpdatedComponent->GetForwardVector() * ClimbReachingDistance,"BlockAll",MirageCharacterOwner->GetIgnoreCharacterParams());
 	if (!SurfaceHit.IsValidBlockingHit()) return false;
+	this->ClimbDirection=SurfaceHit.Normal * -1.f;
 	FQuat NewRotation = FRotationMatrix::MakeFromXZ(-SurfaceHit.Normal, FVector::UpVector).ToQuat();
 	SafeMoveUpdatedComponent(FVector::ZeroVector, NewRotation, false, SurfaceHit);
 	SetMovementMode(MOVE_Custom, CMOVE_Climb);
@@ -701,18 +759,26 @@ void UMirageCharacterMovementComponent::PhysClimb(float deltaTime, int32 Iterati
 		bJustTeleported = false;
 		Iterations++;
 		const FVector OldLocation = UpdatedComponent->GetComponentLocation();
+	
 		FHitResult SurfHit, FloorHit;
-		GetWorld()->LineTraceSingleByProfile(SurfHit, OldLocation, OldLocation + UpdatedComponent->GetForwardVector() * ClimbReachingDistance, "BlockAll", MirageCharacterOwner->GetIgnoreCharacterParams());
-		GetWorld()->LineTraceSingleByProfile(FloorHit, OldLocation, OldLocation + FVector::DownVector * CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * 1.2f, "BlockAll", MirageCharacterOwner->GetIgnoreCharacterParams());
-		if (!SurfHit.IsValidBlockingHit() || FloorHit.IsValidBlockingHit())
+		bool bHit =  GetWorld()->LineTraceSingleByProfile(SurfHit, OldLocation, OldLocation + ClimbDirection * ClimbReachingDistance, "BlockAll", MirageCharacterOwner->GetIgnoreCharacterParams());
+	
+		
+
+			GetWorld()->LineTraceSingleByProfile(FloorHit, OldLocation, OldLocation + FVector::DownVector * CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * 1.2f, "BlockAll", MirageCharacterOwner->GetIgnoreCharacterParams());
+
+
+	if (!SurfHit.IsValidBlockingHit() || FloorHit.IsValidBlockingHit())
 		{
 			SetMovementMode(MOVE_Falling);
 			StartNewPhysics(deltaTime, Iterations);
 			return;
 		}
 
+		
 		// Transform Acceleration
 		Acceleration.Z = 0.f;
+		
 		Acceleration = Acceleration.RotateAngleAxis(90.f, -UpdatedComponent->GetRightVector());
 
 		// Apply acceleration
@@ -733,6 +799,153 @@ void UMirageCharacterMovementComponent::PhysClimb(float deltaTime, int32 Iterati
 	
 
 
+}
+
+float UMirageCharacterMovementComponent::CapsuleRadius() const
+{
+	return CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleRadius();
+}
+
+float UMirageCharacterMovementComponent::CapsuleHalfHeight() const
+{
+	return CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+}
+
+bool UMirageCharacterMovementComponent::TryWallRun()
+{
+	if (!IsFalling()) return false;
+	if (Velocity.SizeSquared2D() < pow(WallRun_MinSpeed, 2)) return false;
+	if (Velocity.Z < -WallRun_MaxVerticalSpeed) return false;
+	FVector Start = UpdatedComponent->GetComponentLocation();
+	FVector LeftEnd = Start - UpdatedComponent->GetRightVector() * CapsuleRadius() * 2;
+	FVector RightEnd = Start + UpdatedComponent->GetRightVector() * CapsuleRadius() * 2;
+	auto Params = MirageCharacterOwner->GetIgnoreCharacterParams();
+	FHitResult FloorHit, WallHit;
+	// Check Player Height
+	if (GetWorld()->LineTraceSingleByProfile(FloorHit, Start, Start + FVector::DownVector * (CapsuleHalfHeight() + WallRun_MinHeight), "BlockAll", Params))
+	{
+		return false;
+	}
+	
+	// Left Cast
+	GetWorld()->LineTraceSingleByProfile(WallHit, Start, LeftEnd, "BlockAll", Params);
+	if (WallHit.IsValidBlockingHit() && (Velocity | WallHit.Normal) < 0)
+	{
+		Safe_bWallRunIsRight = false;
+	}
+	// Right Cast
+	else
+	{
+		GetWorld()->LineTraceSingleByProfile(WallHit, Start, RightEnd, "BlockAll", Params);
+		if (WallHit.IsValidBlockingHit() && (Velocity | WallHit.Normal) < 0)
+		{
+			Safe_bWallRunIsRight = true;
+		}
+		else
+		{
+			return false;
+		}
+	}
+	FVector ProjectedVelocity = FVector::VectorPlaneProject(Velocity, WallHit.Normal);
+	if (ProjectedVelocity.SizeSquared2D() < pow(WallRun_MinSpeed, 2)) return false;
+	
+	// Passed all conditions
+	Velocity = ProjectedVelocity;
+	Velocity.Z = FMath::Clamp(Velocity.Z, 0.f, WallRun_MaxVerticalSpeed);
+	SetMovementMode(MOVE_Custom, CMOVE_WallRun);
+	
+		return true;
+}
+
+void UMirageCharacterMovementComponent::PhysWallRun(float deltaTime, int32 Iterations)
+{
+
+	if (deltaTime < MIN_TICK_TIME)
+	{
+		return;
+	}
+	if (!CharacterOwner || (!CharacterOwner->Controller && !bRunPhysicsWithNoController && !HasAnimRootMotion() && !CurrentRootMotion.HasOverrideVelocity() && (CharacterOwner->GetLocalRole() != ROLE_SimulatedProxy)))
+	{
+		Acceleration = FVector::ZeroVector;
+		Velocity = FVector::ZeroVector;
+		return;
+	}
+	
+	bJustTeleported = false;
+	float remainingTime = deltaTime;
+	// Perform the move
+	while ( (remainingTime >= MIN_TICK_TIME) && (Iterations < MaxSimulationIterations) && CharacterOwner && (CharacterOwner->Controller || bRunPhysicsWithNoController || (CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy)) )
+	{
+		Iterations++;
+		bJustTeleported = false;
+		const float timeTick = GetSimulationTimeStep(remainingTime, Iterations);
+		remainingTime -= timeTick;
+		const FVector OldLocation = UpdatedComponent->GetComponentLocation();
+		
+		FVector Start = UpdatedComponent->GetComponentLocation();
+		FVector CastDelta = UpdatedComponent->GetRightVector() * CapsuleRadius() * 2;
+		FVector End = Safe_bWallRunIsRight ? Start + CastDelta : Start - CastDelta;
+		auto Params = MirageCharacterOwner->GetIgnoreCharacterParams();
+		float SinPullAwayAngle = FMath::Sin(FMath::DegreesToRadians(WallRun_PullAwayAngel));
+		FHitResult WallHit;
+		GetWorld()->LineTraceSingleByProfile(WallHit, Start, End, "BlockAll", Params);
+		bool bWantsToPullAway = WallHit.IsValidBlockingHit() && !Acceleration.IsNearlyZero() && (Acceleration.GetSafeNormal() | WallHit.Normal) > SinPullAwayAngle;
+		if (!WallHit.IsValidBlockingHit() || bWantsToPullAway)
+		{
+			SetMovementMode(MOVE_Falling);
+			StartNewPhysics(remainingTime, Iterations);
+			return;
+		}
+		// Clamp Acceleration
+		Acceleration = FVector::VectorPlaneProject(Acceleration, WallHit.Normal);
+		Acceleration.Z = 0.f;
+		// Apply acceleration
+		CalcVelocity(timeTick, 0.f, false, GetMaxBrakingDeceleration());
+		Velocity = FVector::VectorPlaneProject(Velocity, WallHit.Normal);
+		float TangentAccel = Acceleration.GetSafeNormal() | Velocity.GetSafeNormal2D();
+		bool bVelUp = Velocity.Z > 0.f;
+		Velocity.Z += GetGravityZ() * WallRun_GravityScaleCurve->GetFloatValue(bVelUp ? 0.f : TangentAccel) * timeTick;
+		if (Velocity.SizeSquared2D() < pow(WallRun_MinSpeed, 2) || Velocity.Z < -WallRun_MaxVerticalSpeed)
+		{
+			SetMovementMode(MOVE_Falling);
+			StartNewPhysics(remainingTime, Iterations);
+			return;
+		}
+		
+		// Compute move parameters
+		const FVector Delta = timeTick * Velocity; // dx = v * dt
+		const bool bZeroDelta = Delta.IsNearlyZero();
+		if ( bZeroDelta )
+		{
+			remainingTime = 0.f;
+		}
+		else
+		{
+			FHitResult Hit;
+			SafeMoveUpdatedComponent(Delta, UpdatedComponent->GetComponentQuat(), true, Hit);
+			FVector WallAttractionDelta = -WallHit.Normal * WallAttractionForce * timeTick;
+			SafeMoveUpdatedComponent(WallAttractionDelta, UpdatedComponent->GetComponentQuat(), true, Hit);
+		}
+		if (UpdatedComponent->GetComponentLocation() == OldLocation)
+		{
+			remainingTime = 0.f;
+			break;
+		}
+		Velocity = (UpdatedComponent->GetComponentLocation() - OldLocation) / timeTick; // v = dx / dt
+	}
+
+	
+	FVector Start = UpdatedComponent->GetComponentLocation();
+	FVector CastDelta = UpdatedComponent->GetRightVector() * CapsuleRadius() * 2;
+	FVector End = Safe_bWallRunIsRight ? Start + CastDelta : Start - CastDelta;
+	auto Params = MirageCharacterOwner->GetIgnoreCharacterParams();
+	FHitResult FloorHit, WallHit;
+	GetWorld()->LineTraceSingleByProfile(WallHit, Start, End, "BlockAll", Params);
+	GetWorld()->LineTraceSingleByProfile(FloorHit, Start, Start + FVector::DownVector * (CapsuleHalfHeight() + WallRun_MinHeight * .5f), "BlockAll", Params);
+	if (FloorHit.IsValidBlockingHit() || !WallHit.IsValidBlockingHit() || Velocity.SizeSquared2D() < pow(WallRun_MinSpeed, 2))
+	{
+		SetMovementMode(MOVE_Falling);
+	}
 }
 
 void UMirageCharacterMovementComponent::Server_EnterTryClimb_Implementation()

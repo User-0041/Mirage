@@ -63,7 +63,7 @@ void AMirageCharacter::BeginPlay()
 
 }
 
-FCollisionQueryParams AMirageCharacter::GetIgnoreCharacterParams()
+FCollisionQueryParams AMirageCharacter::GetIgnoreCharacterParams() const
 {
 	FCollisionQueryParams Params;
 	TArray<AActor*> CharacterChildren;
@@ -77,6 +77,7 @@ FCollisionQueryParams AMirageCharacter::GetIgnoreCharacterParams()
 
 void AMirageCharacter::SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent)
 {
+	
 	// Set up action bindings
 	if (UEnhancedInputComponent* EnhancedInputComponent = CastChecked<UEnhancedInputComponent>(PlayerInputComponent))
 	{

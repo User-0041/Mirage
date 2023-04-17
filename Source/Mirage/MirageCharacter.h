@@ -52,9 +52,10 @@ public:
 protected:
 	virtual void BeginPlay();
 
+
 public:
 
-	FCollisionQueryParams GetIgnoreCharacterParams();
+	FCollisionQueryParams GetIgnoreCharacterParams() const;
 	
 	/** Look Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
@@ -91,7 +92,5 @@ public:
 	UCameraComponent* GetFirstPersonCameraComponent() const { return FirstPersonCameraComponent; }
 	/**  Retuns The CharacterMovmentaComponent subobject **/
 	UMirageCharacterMovementComponent* CharacterMirageMovementComponentGet() const  { return MirageCharacterMovementComponent;};
-
-
 };
 

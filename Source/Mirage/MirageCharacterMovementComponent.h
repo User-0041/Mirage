@@ -17,6 +17,7 @@ enum ECustomMovementMode
 	CMOVE_Slide UMETA(DisplayName= "Slide"),
 	CMOVE_Prone UMETA(DisplayName= "Prone"),
 	CMOVE_Climb	UMETA(DisplayName = "Climb"),
+	CMOVE_WallRun UMETA(DisplayName = "WallRun"),
 	CMOVE_Max UMETA(Hidden)
 };
 
@@ -33,6 +34,7 @@ class MIRAGE_API UMirageCharacterMovementComponent : public UCharacterMovementCo
 		uint8 Saved_bPrevWantsToCrouch : 1;
 		uint8 Saved_bWantsToProne:1;
 		uint8 Saved_bWantsToClimb:1;
+		uint8 Saved_bWallRunIsRight:1;
 		
 		virtual bool CanCombineWith(const FSavedMovePtr& NewMove, ACharacter* InCharacter, float MaxDelta) const override;
 		virtual void Clear() override;
@@ -82,6 +84,15 @@ public:
 	float ClimbReachingDistance=100.f;
 	UPROPERTY(EditDefaultsOnly)
 	float WallAttractionForce = 200.f;
+	//Wall Run
+	UPROPERTY(EditDefaultsOnly) float WallRun_MinSpeed=200.f;
+	UPROPERTY(EditDefaultsOnly) float WallRun_MaxSpeed=800.f;
+	UPROPERTY(EditDefaultsOnly) float WallRun_MaxVerticalSpeed=200.f;
+	UPROPERTY(EditDefaultsOnly) float WallRun_PullAwayAngel=75.f;
+	UPROPERTY(EditDefaultsOnly) float WallRun_AttractionForce=200.f;
+	UPROPERTY(EditDefaultsOnly) float WallRun_MinHeight=50.f;
+	UPROPERTY(EditDefaultsOnly) float WallRun_JumpForce=400.f;
+	UPROPERTY(EditDefaultsOnly) UCurveFloat* WallRun_GravityScaleCurve; 
 protected:
 	virtual void UpdateFromCompressedFlags(uint8 Flags) override;
 	virtual void OnMovementUpdated(float DeltaSeconds, const FVector& OldLocation, const FVector& OldVelocity) override;
@@ -100,13 +111,16 @@ public:
 	bool Safe_bPrevWantsToCrouch= false;
 	bool Safe_bWantsToProne;
 	bool Safe_bWantsToClimb;
+	bool Safe_bWallRunIsRight;
 	UPROPERTY(Transient) AMirageCharacter* MirageCharacterOwner;
-	FTimerHandle TimerHandle_EnterProne;
-
+	UPROPERTY(Transient) FTimerHandle TimerHandle_EnterProne;
+	UPROPERTY(Transient) FVector ClimbDirection;
 public:
 	UMirageCharacterMovementComponent();
 	virtual FNetworkPredictionData_Client* GetPredictionData_Client() const override;
 	virtual void InitializeComponent() override;
+	virtual bool CanAttemptJump() const override;
+	virtual bool DoJump(bool bReplayingMoves) override;
 
 private:
 	void EnterSlide();
@@ -127,6 +141,14 @@ private:
 	bool TryClimb();
 	void PhysClimb(float deltaTime, int32 Iterations);
 	UFUNCTION(Server,Reliable) void Server_EnterTryClimb();
+
+private:
+	float CapsuleRadius() const;
+	float CapsuleHalfHeight() const ;
+
+private:
+	bool TryWallRun();
+	void PhysWallRun(float deltaTime, int32 Iterations);
 public:
 	UFUNCTION(BlueprintCallable)
 	void SprintPressed();
@@ -144,6 +166,10 @@ public:
 	void ClimbPressed();
 	UFUNCTION(BlueprintCallable)
 	void ClimbReleased();
+	UFUNCTION(BlueprintPure)
+	bool IsWallRunning() const { return IsCustomMovementMode(CMOVE_WallRun); }
+	UFUNCTION(BlueprintPure)
+	bool WallRunningIsRight() const { return Safe_bWallRunIsRight; }
 
 	
 };
