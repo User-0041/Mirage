@@ -35,7 +35,7 @@ void UMirageCharacterMovementComponent::FSavedMove_Mirage::Clear()
 	Saved_bWantsToProne=0;
 	Saved_bWantsToClimb=0;
 	Saved_bWallRunIsRight=0;
-	Saved_bPrevWantsToCrouch=0;
+	Saved_bWantsToSlide=0;
 }
 
 uint8 UMirageCharacterMovementComponent::FSavedMove_Mirage::GetCompressedFlags() const
@@ -50,7 +50,7 @@ void UMirageCharacterMovementComponent::FSavedMove_Mirage::SetMoveFor(ACharacter
 	FSavedMove_Character::SetMoveFor(C, InDeltaTime, NewAccel, ClientData);
 	UMirageCharacterMovementComponent* CharacterMovement = Cast<UMirageCharacterMovementComponent>(C->GetCharacterMovement());
 	Saved_bWantsToSprint = CharacterMovement->Safe_bWantsToSprint;
-	Saved_bPrevWantsToCrouch = CharacterMovement->Safe_bPrevWantsToCrouch;
+	Saved_bWantsToSlide = CharacterMovement->Safe_bWantsToSlide;
 	Saved_bWantsToProne = CharacterMovement->Safe_bWantsToProne;
 	Saved_bWantsToClimb  = CharacterMovement->Safe_bWantsToClimb;
 	Saved_bWallRunIsRight = CharacterMovement->Safe_bWallRunIsRight;
@@ -61,7 +61,7 @@ void UMirageCharacterMovementComponent::FSavedMove_Mirage::PrepMoveFor(ACharacte
 	FSavedMove_Character::PrepMoveFor(C);
 	UMirageCharacterMovementComponent* CharacterMovement = Cast<UMirageCharacterMovementComponent>(C->GetCharacterMovement());
 	CharacterMovement->Safe_bWantsToSprint = Saved_bWantsToSprint;
-	CharacterMovement->Safe_bPrevWantsToCrouch= Saved_bPrevWantsToCrouch;
+	CharacterMovement->Safe_bWantsToSlide= Saved_bWantsToSlide;
 	CharacterMovement->Safe_bWantsToProne= Saved_bWantsToProne;
 	CharacterMovement->Safe_bWantsToClimb= Saved_bWantsToClimb;
 	CharacterMovement->Safe_bWallRunIsRight = Saved_bWallRunIsRight;
@@ -87,13 +87,13 @@ void UMirageCharacterMovementComponent::OnMovementUpdated(float DeltaSeconds, co
 {
 	Super::OnMovementUpdated(DeltaSeconds, OldLocation, OldVelocity);
 
-	Safe_bPrevWantsToCrouch= bWantsToCrouch;
+
 }
 
 void UMirageCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
 {
 
-	if(MovementMode==MOVE_Walking && !bWantsToCrouch && Safe_bPrevWantsToCrouch)
+	if(MovementMode==MOVE_Walking && !bWantsToCrouch && Safe_bWantsToSlide)
 	{
 		if(CanSlide())
 		{
@@ -268,16 +268,16 @@ void UMirageCharacterMovementComponent::InitializeComponent()
 
 bool UMirageCharacterMovementComponent::CanAttemptJump() const
 {
-	return Super::CanAttemptJump()||IsWallRunning();
+	return Super::CanAttemptJump()||IsWallRunning()||IsClimbing();
 }
 
 bool UMirageCharacterMovementComponent::DoJump(bool bReplayingMoves)
 {
-	UE_LOG(LogTemp,Log,TEXT("Jummmpppp "))		
 	bool bWasWallRunning = IsWallRunning();
+	bool bWasClimbing = IsClimbing();
+	//todo This is Dog Shit Pls Fix
 	if(Super::DoJump(bReplayingMoves))
 	{
-		
 		if(bWasWallRunning)
 		{
 			FVector Start = UpdatedComponent->GetComponentLocation();
@@ -287,6 +287,15 @@ bool UMirageCharacterMovementComponent::DoJump(bool bReplayingMoves)
 			FHitResult WallHit;
 			GetWorld()->LineTraceSingleByProfile(WallHit,Start,End,"BlockAll",Params);
 			Velocity+=WallHit.Normal*WallRun_JumpForce;
+		}else if (bWasClimbing)
+		{
+
+			FVector Start = UpdatedComponent->GetComponentLocation();
+	
+			FHitResult WallHit;
+			GetWorld()->LineTraceSingleByProfile(WallHit, Start, Start + ClimbDirection * ClimbReachingDistance, "BlockAll", MirageCharacterOwner->GetIgnoreCharacterParams());
+			//The -1 Is To Enverse the Vector So we Jump away from the wall 
+			Velocity+=ClimbDirection*WallJumpForce*-1.0;
 		}
 		return  true;
 	}
@@ -306,6 +315,7 @@ void UMirageCharacterMovementComponent::ExitSlide()
 {
 
 	bWantsToCrouch = false;
+	Safe_bWantsToSlide=false;
 	FQuat NewRotation = FRotationMatrix::MakeFromXZ(UpdatedComponent->GetForwardVector().GetSafeNormal2D(),FVector::UpVector).ToQuat();
 	FHitResult Hit;
 	SafeMoveUpdatedComponent(FVector::ZeroVector,NewRotation,true,Hit);
@@ -736,7 +746,7 @@ bool UMirageCharacterMovementComponent::TryClimb()
 	FQuat NewRotation = FRotationMatrix::MakeFromXZ(-SurfaceHit.Normal, FVector::UpVector).ToQuat();
 	SafeMoveUpdatedComponent(FVector::ZeroVector, NewRotation, false, SurfaceHit);
 	SetMovementMode(MOVE_Custom, CMOVE_Climb);
-	bOrientRotationToMovement = false;
+	bOrientRotationToMovement = true;
 	
 	return true;
 }
@@ -761,14 +771,11 @@ void UMirageCharacterMovementComponent::PhysClimb(float deltaTime, int32 Iterati
 		const FVector OldLocation = UpdatedComponent->GetComponentLocation();
 	
 		FHitResult SurfHit, FloorHit;
-		bool bHit =  GetWorld()->LineTraceSingleByProfile(SurfHit, OldLocation, OldLocation + ClimbDirection * ClimbReachingDistance, "BlockAll", MirageCharacterOwner->GetIgnoreCharacterParams());
-	
-		
-
+		 GetWorld()->LineTraceSingleByProfile(SurfHit, OldLocation, OldLocation + ClimbDirection * ClimbReachingDistance, "BlockAll", MirageCharacterOwner->GetIgnoreCharacterParams());
 			GetWorld()->LineTraceSingleByProfile(FloorHit, OldLocation, OldLocation + FVector::DownVector * CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * 1.2f, "BlockAll", MirageCharacterOwner->GetIgnoreCharacterParams());
 
 
-	if (!SurfHit.IsValidBlockingHit() || FloorHit.IsValidBlockingHit())
+	if (!SurfHit.IsValidBlockingHit() )
 		{
 			SetMovementMode(MOVE_Falling);
 			StartNewPhysics(deltaTime, Iterations);
@@ -853,14 +860,15 @@ bool UMirageCharacterMovementComponent::TryWallRun()
 	Velocity = ProjectedVelocity;
 	Velocity.Z = FMath::Clamp(Velocity.Z, 0.f, WallRun_MaxVerticalSpeed);
 	SetMovementMode(MOVE_Custom, CMOVE_WallRun);
-	
+	UE_LOG(LogTemp,Log,TEXT("Enter Wall run"))		
+
 		return true;
 }
 
 void UMirageCharacterMovementComponent::PhysWallRun(float deltaTime, int32 Iterations)
 {
 
-	if (deltaTime < MIN_TICK_TIME)
+		if (deltaTime < MIN_TICK_TIME)
 	{
 		return;
 	}
@@ -948,6 +956,19 @@ void UMirageCharacterMovementComponent::PhysWallRun(float deltaTime, int32 Itera
 	}
 }
 
+void UMirageCharacterMovementComponent::SlidePressed()
+{
+
+	Safe_bWantsToSlide=true;
+	
+}
+
+void UMirageCharacterMovementComponent::SlideReleased()
+{
+	Safe_bWantsToSlide=false;
+	bWantsToCrouch=false;
+}
+
 void UMirageCharacterMovementComponent::Server_EnterTryClimb_Implementation()
 {
 	Safe_bWantsToClimb= true;
@@ -994,5 +1015,4 @@ void UMirageCharacterMovementComponent::ClimbPressed()
 void UMirageCharacterMovementComponent::ClimbReleased()
 {
 	Safe_bWantsToClimb = false;
-
 }

@@ -17,7 +17,9 @@ enum ECustomMovementMode
 	CMOVE_Slide UMETA(DisplayName= "Slide"),
 	CMOVE_Prone UMETA(DisplayName= "Prone"),
 	CMOVE_Climb	UMETA(DisplayName = "Climb"),
+	//todo tweak wall run 
 	CMOVE_WallRun UMETA(DisplayName = "WallRun"),
+	//todo Add wallGlue 
 	CMOVE_Max UMETA(Hidden)
 };
 
@@ -31,7 +33,7 @@ class MIRAGE_API UMirageCharacterMovementComponent : public UCharacterMovementCo
 		//Flags
 		uint8 Saved_bWantsToSprint : 1;
 		//OutherVaribals
-		uint8 Saved_bPrevWantsToCrouch : 1;
+		uint8 Saved_bWantsToSlide : 1;
 		uint8 Saved_bWantsToProne:1;
 		uint8 Saved_bWantsToClimb:1;
 		uint8 Saved_bWallRunIsRight:1;
@@ -84,6 +86,8 @@ public:
 	float ClimbReachingDistance=100.f;
 	UPROPERTY(EditDefaultsOnly)
 	float WallAttractionForce = 200.f;
+	UPROPERTY(EditDefaultsOnly)
+	float WallJumpForce = 200;
 	//Wall Run
 	UPROPERTY(EditDefaultsOnly) float WallRun_MinSpeed=200.f;
 	UPROPERTY(EditDefaultsOnly) float WallRun_MaxSpeed=800.f;
@@ -108,7 +112,7 @@ public:
 	virtual float GetMaxBrakingDeceleration() const override;
 	
 	bool Safe_bWantsToSprint;
-	bool Safe_bPrevWantsToCrouch= false;
+	bool Safe_bWantsToSlide= false;
 	bool Safe_bWantsToProne;
 	bool Safe_bWantsToClimb;
 	bool Safe_bWallRunIsRight;
@@ -151,6 +155,10 @@ private:
 	void PhysWallRun(float deltaTime, int32 Iterations);
 public:
 	UFUNCTION(BlueprintCallable)
+	void SlidePressed();
+	UFUNCTION(BlueprintCallable)
+	void SlideReleased();
+	UFUNCTION(BlueprintCallable)
 	void SprintPressed();
 	UFUNCTION(BlueprintCallable)
 	void SprintReleased();
@@ -168,6 +176,7 @@ public:
 	void ClimbReleased();
 	UFUNCTION(BlueprintPure)
 	bool IsWallRunning() const { return IsCustomMovementMode(CMOVE_WallRun); }
+	UFUNCTION(BlueprintPure) bool IsClimbing() const {return IsCustomMovementMode(CMOVE_Climb);}
 	UFUNCTION(BlueprintPure)
 	bool WallRunningIsRight() const { return Safe_bWallRunIsRight; }
 
