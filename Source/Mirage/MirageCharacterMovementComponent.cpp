@@ -25,6 +25,23 @@ bool UMirageCharacterMovementComponent::FSavedMove_Mirage::CanCombineWith(const 
 	if (Saved_bWallRunIsRight!=NewMirageMove->Saved_bWallRunIsRight) {
 		return false;
 	}
+	if(Saved_bWantsToCover!= NewMirageMove->Saved_bWantsToCover)
+	{
+		return false;
+	}
+	if(Saved_bWantsToClimb!= NewMirageMove->Saved_bWantsToClimb)
+	{
+		return false;
+	}
+	if(Saved_bWantsToSlide!=NewMirageMove->Saved_bWantsToSlide)
+	{
+		return false;
+	}
+	if(Saved_bWantsToProne!=NewMirageMove->Saved_bWantsToProne)
+	{
+		return false;
+	}
+	
 	return FSavedMove_Character::CanCombineWith(NewMove,InCharacter,MaxDelta);
 }
 
@@ -36,6 +53,7 @@ void UMirageCharacterMovementComponent::FSavedMove_Mirage::Clear()
 	Saved_bWantsToClimb=0;
 	Saved_bWallRunIsRight=0;
 	Saved_bWantsToSlide=0;
+	Saved_bWantsToCover=0;
 }
 
 uint8 UMirageCharacterMovementComponent::FSavedMove_Mirage::GetCompressedFlags() const
@@ -54,6 +72,7 @@ void UMirageCharacterMovementComponent::FSavedMove_Mirage::SetMoveFor(ACharacter
 	Saved_bWantsToProne = CharacterMovement->Safe_bWantsToProne;
 	Saved_bWantsToClimb  = CharacterMovement->Safe_bWantsToClimb;
 	Saved_bWallRunIsRight = CharacterMovement->Safe_bWallRunIsRight;
+	Saved_bWantsToCover = CharacterMovement->Safe_bWantToCover;
 }
 
 void UMirageCharacterMovementComponent::FSavedMove_Mirage::PrepMoveFor(ACharacter* C)
@@ -65,6 +84,7 @@ void UMirageCharacterMovementComponent::FSavedMove_Mirage::PrepMoveFor(ACharacte
 	CharacterMovement->Safe_bWantsToProne= Saved_bWantsToProne;
 	CharacterMovement->Safe_bWantsToClimb= Saved_bWantsToClimb;
 	CharacterMovement->Safe_bWallRunIsRight = Saved_bWallRunIsRight;
+	CharacterMovement->Safe_bWantToCover=Saved_bWantsToCover;
 
 }
 
@@ -807,6 +827,31 @@ void UMirageCharacterMovementComponent::PhysClimb(float deltaTime, int32 Iterati
 
 
 }
+
+bool UMirageCharacterMovementComponent::TryCover()
+{
+	FHitResult SurfaceHit;
+	FHitResult GroundHit;
+	FVector CapsuleLocation = UpdatedComponent->GetComponentLocation();
+	GetWorld()->LineTraceSingleByProfile(SurfaceHit,CapsuleLocation, CapsuleLocation + UpdatedComponent->GetForwardVector() * ClimbReachingDistance,"BlockAll",MirageCharacterOwner->GetIgnoreCharacterParams());
+	if (!SurfaceHit.IsValidBlockingHit()) return false;
+	this->ClimbDirection=SurfaceHit.Normal * -1.f;
+	FQuat NewRotation = FRotationMatrix::MakeFromXZ(-SurfaceHit.Normal, FVector::UpVector).ToQuat();
+	SafeMoveUpdatedComponent(FVector::ZeroVector, NewRotation, false, SurfaceHit);
+	SetMovementMode(MOVE_Custom, CMOVE_Climb);
+	bOrientRotationToMovement = true;
+	
+	return true;
+}
+
+void UMirageCharacterMovementComponent::PhysCover(float deltaTime, int32 Iterations)
+{
+}
+
+void UMirageCharacterMovementComponent::Server_EnterTryCover_Implementation()
+{
+}
+
 
 float UMirageCharacterMovementComponent::CapsuleRadius() const
 {

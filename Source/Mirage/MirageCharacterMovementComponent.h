@@ -17,9 +17,10 @@ enum ECustomMovementMode
 	CMOVE_Slide UMETA(DisplayName= "Slide"),
 	CMOVE_Prone UMETA(DisplayName= "Prone"),
 	CMOVE_Climb	UMETA(DisplayName = "Climb"),
-	//todo tweak wall run 
+	//Still In Proggress
+	CMOVE_WallHug UMETA(DisplayName = "WallHug"),
+	//
 	CMOVE_WallRun UMETA(DisplayName = "WallRun"),
-	//todo Add wallGlue 
 	CMOVE_Max UMETA(Hidden)
 };
 
@@ -37,6 +38,7 @@ class MIRAGE_API UMirageCharacterMovementComponent : public UCharacterMovementCo
 		uint8 Saved_bWantsToProne:1;
 		uint8 Saved_bWantsToClimb:1;
 		uint8 Saved_bWallRunIsRight:1;
+		uint8 Saved_bWantsToCover:1;
 		
 		virtual bool CanCombineWith(const FSavedMovePtr& NewMove, ACharacter* InCharacter, float MaxDelta) const override;
 		virtual void Clear() override;
@@ -96,7 +98,15 @@ public:
 	UPROPERTY(EditDefaultsOnly) float WallRun_AttractionForce=200.f;
 	UPROPERTY(EditDefaultsOnly) float WallRun_MinHeight=50.f;
 	UPROPERTY(EditDefaultsOnly) float WallRun_JumpForce=400.f;
-	UPROPERTY(EditDefaultsOnly) UCurveFloat* WallRun_GravityScaleCurve; 
+	UPROPERTY(EditDefaultsOnly) UCurveFloat* WallRun_GravityScaleCurve;
+	//Cover
+	UPROPERTY(EditDefaultsOnly)
+	float Cover_MaxSpeed= 300.f;
+	UPROPERTY(EditDefaultsOnly)
+	float BreakingDecelerationCovering=1000.f;
+	UPROPERTY(EditDefaultsOnly)
+	float CoverReachingDistance=100.f;
+
 protected:
 	virtual void UpdateFromCompressedFlags(uint8 Flags) override;
 	virtual void OnMovementUpdated(float DeltaSeconds, const FVector& OldLocation, const FVector& OldVelocity) override;
@@ -116,6 +126,7 @@ public:
 	bool Safe_bWantsToProne;
 	bool Safe_bWantsToClimb;
 	bool Safe_bWallRunIsRight;
+	bool Safe_bWantToCover;
 	UPROPERTY(Transient) AMirageCharacter* MirageCharacterOwner;
 	UPROPERTY(Transient) FTimerHandle TimerHandle_EnterProne;
 	UPROPERTY(Transient) FVector ClimbDirection;
@@ -145,6 +156,11 @@ private:
 	bool TryClimb();
 	void PhysClimb(float deltaTime, int32 Iterations);
 	UFUNCTION(Server,Reliable) void Server_EnterTryClimb();
+
+private:
+	bool TryCover();
+	void PhysCover(float deltaTime,int32 Iterations);
+	UFUNCTION(Server , Reliable) void Server_EnterTryCover();
 
 private:
 	float CapsuleRadius() const;
