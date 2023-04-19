@@ -33,8 +33,8 @@ class MIRAGE_API UMirageCharacterMovementComponent : public UCharacterMovementCo
 	{
 		//Flags
 		uint8 Saved_bWantsToSprint : 1;
-		//OutherVaribals
 		uint8 Saved_bWantsToSlide : 1;
+		//OutherVaribals
 		uint8 Saved_bWantsToProne:1;
 		uint8 Saved_bWantsToClimb:1;
 		uint8 Saved_bWallRunIsRight:1;
@@ -152,14 +152,14 @@ public:
 	virtual bool CanAttemptJump() const override;
 	virtual bool DoJump(bool bReplayingMoves) override;
 
+
 private:
 	void EnterSlide();
 	void ExitSlide();
 	void PhysSlide(float DeltaTime, int32 Iterations);
 	bool CanSlide() const;
 	bool GetSlideSurface(FHitResult& Hit);
-	UFUNCTION(Server, Reliable)
-	void Server_EnterTrySlide();
+
 private:
 	void EnterProne();
 	void ExistProne();
@@ -216,6 +216,11 @@ public:
 	UFUNCTION(BlueprintPure)
 	bool IsClimbing() const { return IsCustomMovementMode(CMOVE_Climb); }
 
+
+	UFUNCTION(BlueprintPure)
+	bool IsSliding() const { return IsCustomMovementMode(CMOVE_Slide); }
+
+	
 	UFUNCTION(BlueprintPure)
 	bool WallRunningIsRight() const { return Safe_bWallRunIsRight; }
 };

@@ -62,6 +62,7 @@ uint8 UMirageCharacterMovementComponent::FSavedMove_Mirage::GetCompressedFlags()
 {
 	uint8 Result = FSavedMove_Character::GetCompressedFlags();
 	if (Saved_bWantsToSprint) Result |= FLAG_Custom_0;
+	if (Saved_bWantsToSlide) Result |= FLAG_Custom_1;
 	return Result;
 }
 
@@ -103,6 +104,7 @@ void UMirageCharacterMovementComponent::UpdateFromCompressedFlags(uint8 Flags)
 {
 	Super::UpdateFromCompressedFlags(Flags);
 	Safe_bWantsToSprint = (Flags & FSavedMove_Character::FLAG_Custom_0) != 0;
+	Safe_bWantsToSlide = (Flags & FSavedMove_Character::FLAG_Custom_1) != 0;
 }
 
 void UMirageCharacterMovementComponent::OnMovementUpdated(float DeltaSeconds, const FVector& OldLocation, const FVector& OldVelocity)
@@ -113,10 +115,10 @@ void UMirageCharacterMovementComponent::OnMovementUpdated(float DeltaSeconds, co
 void UMirageCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
 {
 
-	if(MovementMode==MOVE_Walking  && Safe_bWantsToSlide && CanSlide())
+	
+	if(Safe_bWantsToSlide && CanSlide())
 	{
-			SetMovementMode(MOVE_Custom, CMOVE_Slide);
-			Server_EnterTrySlide();
+		SetMovementMode(MOVE_Custom, CMOVE_Slide);
 	}
 
 	if(IsCustomMovementMode(CMOVE_Slide)&&(!bWantsToCrouch || !CanSlide() ))
@@ -282,14 +284,15 @@ void UMirageCharacterMovementComponent::InitializeComponent()
 
 bool UMirageCharacterMovementComponent::CanAttemptJump() const
 {
-	return Super::CanAttemptJump()||IsWallRunning()||IsClimbing();
+
+ 	return Super::CanAttemptJump()||IsWallRunning()||IsClimbing()||IsSliding();
 }
 
 bool UMirageCharacterMovementComponent::DoJump(bool bReplayingMoves)
 {
 	bool bWasWallRunning = IsWallRunning();
 	bool bWasClimbing = IsClimbing();
-	//todo This is Dog Shit Pls Fix
+	bool bWasSliding = IsSliding();
 	if(Super::DoJump(bReplayingMoves))
 	{
 		if(bWasWallRunning)
@@ -301,15 +304,20 @@ bool UMirageCharacterMovementComponent::DoJump(bool bReplayingMoves)
 			FHitResult WallHit;
 			GetWorld()->LineTraceSingleByProfile(WallHit,Start,End,"BlockAll",Params);
 			Velocity+=WallHit.Normal*WallRun_JumpForce;
+			SetMovementMode(MOVE_Falling);
 		}else if (bWasClimbing)
 		{
-
 			FVector Start = UpdatedComponent->GetComponentLocation();
-	
 			FHitResult WallHit;
 			GetWorld()->LineTraceSingleByProfile(WallHit, Start, Start + ClimbDirection * ClimbReachingDistance, "BlockAll", MirageCharacterOwner->GetIgnoreCharacterParams());
 			//The -1 Is To Enverse the Vector So we Jump away from the wall 
 			Velocity+=ClimbDirection*WallJumpForce*-1.0;
+			SetMovementMode(MOVE_Falling);
+		}else if(bWasSliding)
+		{
+			Velocity.Z = FMath::Max<FVector::FReal>(Velocity.Z, JumpZVelocity);
+			SetMovementMode(MOVE_Falling);
+		
 		}
 		return  true;
 	}
@@ -1015,10 +1023,7 @@ void UMirageCharacterMovementComponent::SlideReleased()
 	Safe_bWantsToSlide=false;
 }
 
-void UMirageCharacterMovementComponent::Server_EnterTrySlide_Implementation()
-{
-	Safe_bWantsToSlide=true;
-}
+
 
 void UMirageCharacterMovementComponent::Server_EnterTryClimb_Implementation()
 {

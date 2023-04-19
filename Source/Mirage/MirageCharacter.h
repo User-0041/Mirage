@@ -51,7 +51,7 @@ public:
 
 protected:
 	virtual void BeginPlay();
-
+	virtual bool CanJumpInternal_Implementation() const;
 
 public:
 

@@ -63,6 +63,11 @@ void AMirageCharacter::BeginPlay()
 
 }
 
+bool AMirageCharacter::CanJumpInternal_Implementation() const
+{
+	return JumpIsAllowedInternal();
+}
+
 FCollisionQueryParams AMirageCharacter::GetIgnoreCharacterParams() const
 {
 	FCollisionQueryParams Params;
