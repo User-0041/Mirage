@@ -18,6 +18,7 @@ UMirageCharacterMovementComponent::UMirageCharacterMovementComponent()
 bool UMirageCharacterMovementComponent::FSavedMove_Mirage::CanCombineWith(const FSavedMovePtr& NewMove, ACharacter* InCharacter, float MaxDelta) const
 {
 	FSavedMove_Mirage* NewMirageMove = static_cast<FSavedMove_Mirage*>(NewMove.Get());
+	
 	if (Saved_bWantsToSprint!=NewMirageMove->Saved_bWantsToSprint) {
 		return false;
 	}
@@ -33,6 +34,7 @@ bool UMirageCharacterMovementComponent::FSavedMove_Mirage::CanCombineWith(const 
 	{
 		return false;
 	}
+	
 	if(Saved_bWantsToSlide!=NewMirageMove->Saved_bWantsToSlide)
 	{
 		return false;
@@ -106,26 +108,18 @@ void UMirageCharacterMovementComponent::UpdateFromCompressedFlags(uint8 Flags)
 void UMirageCharacterMovementComponent::OnMovementUpdated(float DeltaSeconds, const FVector& OldLocation, const FVector& OldVelocity)
 {
 	Super::OnMovementUpdated(DeltaSeconds, OldLocation, OldVelocity);
-
-
 }
 
 void UMirageCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
 {
 
-	if(MovementMode==MOVE_Walking && !bWantsToCrouch && Safe_bWantsToSlide)
+	if(MovementMode==MOVE_Walking  && Safe_bWantsToSlide && CanSlide())
 	{
-		if(CanSlide())
-		{
 			SetMovementMode(MOVE_Custom, CMOVE_Slide);
-			
-		}else if (IsCustomMovementMode(CMOVE_Slide) && !bWantsToCrouch)
-		{
-			SetMovementMode(MOVE_Walking);
-		}
+			Server_EnterTrySlide();
 	}
 
-	if(IsCustomMovementMode(CMOVE_Slide)&& !bWantsToCrouch)
+	if(IsCustomMovementMode(CMOVE_Slide)&&(!bWantsToCrouch || !CanSlide() ))
 	{
 		ExitSlide();
 	}
@@ -329,6 +323,7 @@ void UMirageCharacterMovementComponent::EnterSlide()
 	bOrientRotationToMovement = false;
 	Velocity += Velocity.GetSafeNormal2D() * Slide_EnterImpulse;
 	FindFloor(UpdatedComponent->GetComponentLocation(), CurrentFloor, true, NULL);
+
 }
 
 void UMirageCharacterMovementComponent::ExitSlide()
@@ -344,6 +339,9 @@ void UMirageCharacterMovementComponent::ExitSlide()
 
 void UMirageCharacterMovementComponent::PhysSlide(float DeltaTime, int32 Iterations)
 {
+	
+
+
 	if(DeltaTime<MIN_TICK_TIME)
 	{
 		return;
@@ -545,6 +543,7 @@ bool UMirageCharacterMovementComponent::CanSlide() const
 	FName ProfileName= TEXT("BlockAll");
 	bool ValidSurface = GetWorld()->LineTraceTestByProfile(Start,End,ProfileName,MirageCharacterOwner->GetIgnoreCharacterParams());
 	bool bEnoughSpeed =  Velocity.SizeSquared() > pow(Slide_MinSpeed ,2);
+	
 	return ValidSurface && bEnoughSpeed ;
 }
 
@@ -555,6 +554,8 @@ bool UMirageCharacterMovementComponent::GetSlideSurface(FHitResult& Hit)
 	FName ProfileName = TEXT("BlockAll");
 	return  GetWorld()->LineTraceSingleByProfile(Hit,Start,End,ProfileName,MirageCharacterOwner->GetIgnoreCharacterParams());
 }
+
+
 
 void UMirageCharacterMovementComponent::EnterProne()
 {
@@ -1006,12 +1007,17 @@ void UMirageCharacterMovementComponent::SlidePressed()
 
 	Safe_bWantsToSlide=true;
 	
+	
 }
 
 void UMirageCharacterMovementComponent::SlideReleased()
 {
 	Safe_bWantsToSlide=false;
-	bWantsToCrouch=false;
+}
+
+void UMirageCharacterMovementComponent::Server_EnterTrySlide_Implementation()
+{
+	Safe_bWantsToSlide=true;
 }
 
 void UMirageCharacterMovementComponent::Server_EnterTryClimb_Implementation()
