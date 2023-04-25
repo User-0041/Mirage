@@ -48,6 +48,8 @@ public:
 	/** Make the weapon Fire a Projectile */
 	UFUNCTION(BlueprintCallable, Category="Weapon")
 	void Fire();
+	UFUNCTION(Server,Reliable)
+	void ServerFire();
 
 protected:
 	/** Ends gameplay for this component. */

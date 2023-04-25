@@ -13,13 +13,10 @@ UENUM(BlueprintType)
 enum ECustomMovementMode
 {
 	CMOVE_None UMETA(Hidden),
-	//Bug Slide Need Feexing 
 	CMOVE_Slide UMETA(DisplayName= "Slide"),
 	CMOVE_Prone UMETA(DisplayName= "Prone"),
 	CMOVE_Climb UMETA(DisplayName = "Climb"),
-	//Still In Proggress
-	CMOVE_WallHug UMETA(DisplayName = "WallHug"),
-	//Fix 
+	CMOVE_Cover UMETA(DisplayName = "Cover"),
 	CMOVE_WallRun UMETA(DisplayName = "WallRun"),
 	CMOVE_Max UMETA(Hidden)
 };
@@ -113,6 +110,10 @@ public:
 	UCurveFloat* WallRun_GravityScaleCurve;
 	//Cover
 	UPROPERTY(EditDefaultsOnly)
+	float BreakingDecelerationCover=200.f;
+	UPROPERTY(EditDefaultsOnly)
+	float Cover_ReachingDistance = 100.f;
+	UPROPERTY(EditDefaultsOnly)
 	float Cover_MaxSpeed = 300.f;
 	UPROPERTY(EditDefaultsOnly)
 	float BreakingDecelerationCovering = 1000.f;
@@ -143,7 +144,7 @@ public:
 	UPROPERTY(Transient)
 	FTimerHandle TimerHandle_EnterProne;
 	UPROPERTY(Transient)
-	FVector ClimbDirection;
+	FVector WallDirection;
 
 public:
 	UMirageCharacterMovementComponent();
@@ -210,17 +211,16 @@ public:
 	void ClimbPressed();
 	UFUNCTION(BlueprintCallable)
 	void ClimbReleased();
+	UFUNCTION(BlueprintCallable)
+	void CoverPressed();
+	UFUNCTION(BlueprintCallable)
+	void CoverReleased();
 	UFUNCTION(BlueprintPure)
 	bool IsWallRunning() const { return IsCustomMovementMode(CMOVE_WallRun); }
-
 	UFUNCTION(BlueprintPure)
 	bool IsClimbing() const { return IsCustomMovementMode(CMOVE_Climb); }
-
-
 	UFUNCTION(BlueprintPure)
 	bool IsSliding() const { return IsCustomMovementMode(CMOVE_Slide); }
-
-	
 	UFUNCTION(BlueprintPure)
 	bool WallRunningIsRight() const { return Safe_bWallRunIsRight; }
 };

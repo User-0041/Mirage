@@ -2,6 +2,7 @@ Binaries
 DerivedDataCache
 Intermediate
 Saved
+Content/MirageCharacter/Characters
 .vscode
 .vs
 *.VC.db
@@ -12,3 +13,4 @@ Saved
 *.suo
 *.xcodeproj
 *.xcworkspace
+

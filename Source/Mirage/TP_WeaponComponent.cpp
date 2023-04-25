@@ -24,7 +24,12 @@ void UTP_WeaponComponent::Fire()
 	{
 		return;
 	}
-
+	AActor* MyActor = GetOwner();
+	if (MyActor != nullptr)
+	{
+		FString ActorName = MyActor->GetName();
+		UE_LOG(LogTemp, Warning, TEXT("Actor owner: %s"), *ActorName);
+	}
 	// Try and fire a projectile
 	if (ProjectileClass != nullptr)
 	{
@@ -34,7 +39,7 @@ void UTP_WeaponComponent::Fire()
 			APlayerController* PlayerController = Cast<APlayerController>(Character->GetController());
 			const FRotator SpawnRotation = PlayerController->PlayerCameraManager->GetCameraRotation();
 			// MuzzleOffset is in camera space, so transform it to world space before offsetting from the character location to find the final muzzle position
-			const FVector SpawnLocation = GetOwner()->GetActorLocation() + SpawnRotation.RotateVector(MuzzleOffset);
+			const FVector SpawnLocation = GetOwner()->GetActorLocation() + SpawnRotation.RotateVector(MuzzleOffset) ;
 	
 			//Set Spawn Collision Handling Override
 			FActorSpawnParameters ActorSpawnParams;
@@ -42,6 +47,7 @@ void UTP_WeaponComponent::Fire()
 	
 			// Spawn the projectile at the muzzle
 			World->SpawnActor<AMirageProjectile>(ProjectileClass, SpawnLocation, SpawnRotation, ActorSpawnParams);
+			ServerFire();
 		}
 	}
 	
@@ -62,6 +68,16 @@ void UTP_WeaponComponent::Fire()
 		}
 	}
 }
+
+
+void UTP_WeaponComponent::ServerFire_Implementation()
+{
+
+	UE_LOG(LogTemp,Warning,TEXT("Server Fier"))
+
+
+}
+
 
 void UTP_WeaponComponent::AttachWeapon(AMirageCharacter* TargetCharacter)
 {
