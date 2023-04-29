@@ -21,10 +21,6 @@
 			"TargetAllowList": [
 				"Editor"
 			]
-		},
-		{
-			"Name": "ChaosVehiclesPlugin",
-			"Enabled": true
 		}
 	]
 }
